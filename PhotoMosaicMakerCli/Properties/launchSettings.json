@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "PhotoMosaicMakerCli": {
+      "commandName": "Project",
+      "commandLineArgs": "extract --out \"C:\\temp\\frames\" --fps 1 --max 0 --video \"C:\\temp\\a.mp4\""
+    }
+  }
+}
