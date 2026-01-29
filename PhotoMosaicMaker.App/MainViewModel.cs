@@ -5,17 +5,12 @@ using PhotoMosaicMaker.Core.Models;
 using PhotoMosaicMaker.Core.Video;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -23,15 +18,28 @@ namespace PhotoMosaicMaker.App
 {
     public sealed class MainViewModel : INotifyPropertyChanged
     {
+        public enum EnOutputResolutionPreset
+        {
+            Uhd,
+            Qhd,
+            Fhd,
+            Hd
+        }
+
+        #region Fields
+
+        private static readonly MosaicSettings MosaicDefaults = new MosaicSettings();
+        private static readonly YoutubeDownloadOptions YtDefaults = new YoutubeDownloadOptions();
+
         private string _targetPath = "";
 
         private string _outputFolder = "";
         private string _sourcesFolder = "";
         private string _outputFileNameText = "mosaic_out";
 
-        private bool _useSourcePatches = false;
+        private bool _useSourcePatches = MosaicDefaults.UseSourcePatches;
+        private string _tileSizeText = MosaicDefaults.TileSize.ToString();
 
-        private string _tileSizeText = "24";
         private string _extractFpsText = "1";
         private string _extractMaxFramesText = "0";
 
@@ -40,6 +48,12 @@ namespace PhotoMosaicMaker.App
 
         private string _statusText = "";
         private double _progressValue = 0;
+
+        private bool _ytDlpNoPlaylist = YtDefaults.NoPlaylist;
+        private string _ytDlpMaxResolutionText = YtDefaults.MaxResolution.ToString();
+
+        private EnOutputResolutionPreset _outputResolutionPreset = EnOutputResolutionPreset.Fhd;
+
         private ImageSource? _previewImage;
 
         private readonly MosaicEngine _engine = new MosaicEngine();
@@ -52,11 +66,12 @@ namespace PhotoMosaicMaker.App
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        #endregion
+
         public MainViewModel()
         {
             VideoSources = new ObservableCollection<VideoSourceItem>();
 
-            // Commands 먼저 생성(초기 값 세팅 중 RaiseCanExecuteAll 호출 대비)
             BrowseTargetCommand = new RelayCommand(BrowseTarget, () => _isBusy == false);
             BrowseOutputFolderCommand = new RelayCommand(BrowseOutputFolder, () => _isBusy == false);
             OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder, CanOpenOutputFolder);
@@ -79,6 +94,10 @@ namespace PhotoMosaicMaker.App
 
             RaiseCanExecuteAll();
         }
+
+        
+
+        #region Properties
 
         // ----- Readonly paths -----
         public string TargetPath
@@ -233,6 +252,37 @@ namespace PhotoMosaicMaker.App
             private set { _previewImage = value; OnPropertyChanged(); }
         }
 
+        public bool YtDlpNoPlaylist
+        {
+            get => _ytDlpNoPlaylist;
+            set
+            {
+                if (_ytDlpNoPlaylist == value) return;
+                _ytDlpNoPlaylist = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public string YtDlpMaxResolutionText
+        {
+            get => _ytDlpMaxResolutionText;
+            set
+            {
+                if (_ytDlpMaxResolutionText == value) return;
+                _ytDlpMaxResolutionText = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private int ParseYtDlpMaxResolution()
+        {
+            if (int.TryParse(YtDlpMaxResolutionText, out int n) == true && n >= 0)
+            {
+                return n;
+            }
+            return 720;
+        }
+
         // ----- Unified sources -----
         public ObservableCollection<VideoSourceItem> VideoSources { get; }
 
@@ -248,7 +298,89 @@ namespace PhotoMosaicMaker.App
             }
         }
 
-        // ----- Commands -----
+        public EnOutputResolutionPreset OutputResolutionPreset
+        {
+            get => _outputResolutionPreset;
+            set
+            {
+                if (_outputResolutionPreset == value) return;
+                _outputResolutionPreset = value;
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsOutputUhd));
+                OnPropertyChanged(nameof(IsOutputQhd));
+                OnPropertyChanged(nameof(IsOutputFhd));
+                OnPropertyChanged(nameof(SelectedOutputWidth));
+                OnPropertyChanged(nameof(SelectedOutputHeight));
+
+                TileSizeText = _outputResolutionPreset switch
+                {
+                    EnOutputResolutionPreset.Uhd => (MosaicDefaults.TileSize * 2).ToString(),
+                    EnOutputResolutionPreset.Qhd => (MosaicDefaults.TileSize * 3 / 2).ToString(),
+                    EnOutputResolutionPreset.Fhd => MosaicDefaults.TileSize.ToString(),
+                    _ => (MosaicDefaults.TileSize * 2 / 3).ToString()
+                };
+
+                OnPropertyChanged(nameof(TileSizeText));
+            }
+        }
+
+        public bool IsOutputUhd
+        {
+            get => OutputResolutionPreset == EnOutputResolutionPreset.Uhd;
+            set
+            {
+                if (value == true) OutputResolutionPreset = EnOutputResolutionPreset.Uhd;
+            }
+        }
+
+        public bool IsOutputQhd
+        {
+            get => OutputResolutionPreset == EnOutputResolutionPreset.Qhd;
+            set
+            {
+                if (value == true) OutputResolutionPreset = EnOutputResolutionPreset.Qhd;
+            }
+        }
+
+        public bool IsOutputFhd
+        {
+            get => OutputResolutionPreset == EnOutputResolutionPreset.Fhd;
+            set
+            {
+                if (value == true) OutputResolutionPreset = EnOutputResolutionPreset.Fhd;
+            }
+        }
+
+        public bool IsOutputHd
+        {
+            get => OutputResolutionPreset == EnOutputResolutionPreset.Hd;
+            set
+            {
+                if (value == true) OutputResolutionPreset = EnOutputResolutionPreset.Hd;
+            }
+        }
+
+        public int SelectedOutputWidth => OutputResolutionPreset switch
+        {
+            EnOutputResolutionPreset.Uhd => 3840,
+            EnOutputResolutionPreset.Qhd => 2560,
+            EnOutputResolutionPreset.Fhd => 1920,
+            _ => 1280
+        };
+
+        public int SelectedOutputHeight => OutputResolutionPreset switch
+        {
+            EnOutputResolutionPreset.Uhd => 2160,
+            EnOutputResolutionPreset.Qhd => 1440,
+            EnOutputResolutionPreset.Fhd => 1080,
+            _ => 720
+        };
+
+        #endregion
+
+        #region commands
+
         public RelayCommand BrowseTargetCommand { get; }
         public RelayCommand BrowseOutputFolderCommand { get; }
         public RelayCommand OpenOutputFolderCommand { get; }
@@ -265,6 +397,10 @@ namespace PhotoMosaicMaker.App
         public RelayCommand BuildLibraryCommand { get; }
         public RelayCommand RenderCommand { get; }
         public RelayCommand CancelCommand { get; }
+
+        #endregion
+
+        #region Methods
 
         private void BrowseTarget()
         {
@@ -406,9 +542,9 @@ namespace PhotoMosaicMaker.App
                 var opt = new YoutubeDownloadOptions
                 {
                     DownloaderExePath = exe,
-                    NoPlaylist = true,
-                    DeleteDownloadedVideo = false, // 목록에 파일로 넣을 거라 다운로드 파일 유지
-                    MaxResolution = 720,
+                    NoPlaylist = YtDlpNoPlaylist,
+                    DeleteDownloadedVideo = false,
+                    MaxResolution = ParseYtDlpMaxResolution()
                 };
 
                 string videoPath = await downloader.DownloadAsync(url, cacheFolder, opt, token);
@@ -630,9 +766,8 @@ namespace PhotoMosaicMaker.App
                 ProgressValue = 0;
 
                 int tileSize = ParseTileSize();
-                //var settings = CreateSettings(tileSize);
 
-                var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, 1920, 1080);
+                var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, SelectedOutputWidth, SelectedOutputHeight);
                 var settings = CreateSettings(tileSize, outW, outH);
 
                 var progress = new Progress<MosaicProgress>(p =>
@@ -694,7 +829,7 @@ namespace PhotoMosaicMaker.App
                 string outputPath = BuildUniqueOutputPath(OutputFolder, OutputFileNameText);
 
                 int tileSize = ParseTileSize();
-                var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, 1920, 1080);
+                var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, SelectedOutputWidth, SelectedOutputHeight);
                 var settings = CreateSettings(tileSize, outW, outH);
 
                 var progress = new Progress<MosaicProgress>(p =>
@@ -885,7 +1020,7 @@ namespace PhotoMosaicMaker.App
         private int ParseTileSize()
         {
             if (int.TryParse(TileSizeText, out int n) == true && n > 0) return n;
-            return 24;
+            return MosaicDefaults.TileSize;
         }
 
         private double ParseFps()
@@ -916,7 +1051,7 @@ namespace PhotoMosaicMaker.App
 
         private static (int W, int H) ComputeOutputSizeFromTarget(string targetPath, int maxW, int maxH)
         {
-            var info = SixLabors.ImageSharp.Image.Identify(targetPath);
+            var info = Image.Identify(targetPath);
             if (info == null || info.Width <= 0 || info.Height <= 0)
             {
                 return (maxW, maxH);
@@ -939,5 +1074,7 @@ namespace PhotoMosaicMaker.App
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
+
+        #endregion
     }
 }
