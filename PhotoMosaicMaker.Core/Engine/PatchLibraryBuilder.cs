@@ -16,6 +16,7 @@ namespace PhotoMosaicMaker.Core.Engine
             IReadOnlyList<string> imagePaths,
             int tileSize,
             bool useSourcePatches,
+            int matchingGridSize,
             IProgress<MosaicProgress>? progress,
             CancellationToken cancellationToken)
         {
@@ -53,9 +54,12 @@ namespace PhotoMosaicMaker.Core.Engine
 
                         for (int x = 0; x < usableW; x += tileSize)
                         {
+                            int gridSize = matchingGridSize;
+
                             var patch = ImageOps.Crop(img, x, y, tileSize, tileSize);
                             var mean = ImageOps.ComputeMeanRgb(patch);
-                            patches.Add(new PatchRecord(id, mean, patch));
+                            var grid = ImageOps.ComputeGridMeanRgb(patch, gridSize);
+                            patches.Add(new PatchRecord(id, mean, patch, gridSize, grid));
                             id++;
                         }
                     }
@@ -64,9 +68,12 @@ namespace PhotoMosaicMaker.Core.Engine
                 {
                     // (B) 원본 1장 모드: 이미지 1장당 tileSize 타일 1개 후보만 만든다
                     // 비율 유지 + cover(중앙) 크롭으로 왜곡 없이 타일 크기 맞춤
+                    int gridSize = matchingGridSize;
+
                     var tile = ImageOps.CreateTileCoverCrop(img, tileSize);
                     var mean = ImageOps.ComputeMeanRgb(tile);
-                    patches.Add(new PatchRecord(id, mean, tile));
+                    var grid = ImageOps.ComputeGridMeanRgb(tile, gridSize);
+                    patches.Add(new PatchRecord(id, mean, tile, gridSize, grid));
                     id++;
                 }
             }

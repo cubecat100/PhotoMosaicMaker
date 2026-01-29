@@ -121,6 +121,69 @@ namespace PhotoMosaicMaker.Core.Imaging
             });
         }
 
+        public static float[] ComputeGridMeanRgb(Image<Rgba32> tile, int gridSize)
+        {
+            return ComputeGridMeanRgbRegion(tile, 0, 0, tile.Width, tile.Height, gridSize);
+        }
+
+        // 반환: 길이 = gridSize*gridSize*3 (R,G,B 순)
+        public static float[] ComputeGridMeanRgbRegion(Image<Rgba32> img, int x, int y, int w, int h, int gridSize)
+        {
+            if (gridSize <= 1) return Array.Empty<float>();
+
+            int cellCount = gridSize * gridSize;
+            float[] feat = new float[cellCount * 3];
+
+            for (int gy = 0; gy < gridSize; gy++)
+            {
+                int y0 = y + (gy * h) / gridSize;
+                int y1 = y + ((gy + 1) * h) / gridSize;
+
+                for (int gx = 0; gx < gridSize; gx++)
+                {
+                    int x0 = x + (gx * w) / gridSize;
+                    int x1 = x + ((gx + 1) * w) / gridSize;
+
+                    long sumR = 0, sumG = 0, sumB = 0, count = 0;
+
+                    for (int yy = y0; yy < y1; yy++)
+                    {
+                        Span<Rgba32> row = img.DangerousGetPixelRowMemory(yy).Span;
+                        for (int xx = x0; xx < x1; xx++)
+                        {
+                            Rgba32 p = row[xx];
+                            sumR += p.R;
+                            sumG += p.G;
+                            sumB += p.B;
+                            count++;
+                        }
+                    }
+
+                    int idx = (gy * gridSize + gx) * 3;
+                    if (count > 0)
+                    {
+                        feat[idx + 0] = (float)sumR / count;
+                        feat[idx + 1] = (float)sumG / count;
+                        feat[idx + 2] = (float)sumB / count;
+                    }
+                }
+            }
+
+            return feat;
+        }
+
+        public static float DistanceSquared(float[] a, float[] b)
+        {
+            int n = a.Length;
+            float d = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float diff = a[i] - b[i];
+                d += diff * diff;
+            }
+            return d;
+        }
+
         private static int Clamp255(int v)
         {
             if (v < 0) return 0;

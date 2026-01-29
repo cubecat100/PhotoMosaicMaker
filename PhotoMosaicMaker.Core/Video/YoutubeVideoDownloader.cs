@@ -53,6 +53,9 @@ namespace PhotoMosaicMaker.Core.Video
                 psi.ArgumentList.Add($"res:{options.MaxResolution}");
             }
 
+            psi.ArgumentList.Add("--extractor-args");
+            psi.ArgumentList.Add("youtube:player-client=tv_simply");
+
             psi.ArgumentList.Add(url);
 
             try

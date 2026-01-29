@@ -30,6 +30,7 @@ namespace PhotoMosaicMaker.App
 
         private static readonly MosaicSettings MosaicDefaults = new MosaicSettings();
         private static readonly YoutubeDownloadOptions YtDefaults = new YoutubeDownloadOptions();
+        private static readonly VideoFrameExtractionOptions FrameExtractionDefaults = new VideoFrameExtractionOptions();
 
         private string _targetPath = "";
 
@@ -49,8 +50,12 @@ namespace PhotoMosaicMaker.App
         private string _statusText = "";
         private double _progressValue = 0;
 
+        private int _gridSize = MosaicDefaults.MatchingGridSize;
+
         private bool _ytDlpNoPlaylist = YtDefaults.NoPlaylist;
         private string _ytDlpMaxResolutionText = YtDefaults.MaxResolution.ToString();
+
+        private string _imgDplThrValue = FrameExtractionDefaults.DHashHammingThreshold.ToString();
 
         private EnOutputResolutionPreset _outputResolutionPreset = EnOutputResolutionPreset.Fhd;
 
@@ -283,6 +288,22 @@ namespace PhotoMosaicMaker.App
             return 720;
         }
 
+
+        public int GridSize
+        {
+            get => _gridSize;
+            set
+            {
+                if (_gridSize == value) return;
+                _gridSize = value;
+                OnPropertyChanged();
+                _library?.Dispose();
+                _library = null;
+                StatusText = "옵션 변경됨: Build Library를 다시 실행하세요.";
+                RaiseCanExecuteAll();
+            }
+        }
+
         // ----- Unified sources -----
         public ObservableCollection<VideoSourceItem> VideoSources { get; }
 
@@ -322,6 +343,8 @@ namespace PhotoMosaicMaker.App
                 };
 
                 OnPropertyChanged(nameof(TileSizeText));
+
+                RaiseCanExecuteAll();
             }
         }
 
@@ -376,6 +399,26 @@ namespace PhotoMosaicMaker.App
             EnOutputResolutionPreset.Fhd => 1080,
             _ => 720
         };
+
+        public string ImgDplThrValue
+        {
+            get => _imgDplThrValue;
+            set
+            {
+                if (_imgDplThrValue == value) return;
+                
+                if(int.TryParse(value, out int n) && n >= 0 && n < FrameExtractionDefaults.MaxThresholdValue)
+                {
+                    _imgDplThrValue = value;
+                }
+                else
+                {
+                    _imgDplThrValue = FrameExtractionDefaults.DHashHammingThreshold.ToString();
+                }
+
+                OnPropertyChanged();
+            }
+        }
 
         #endregion
 
@@ -649,7 +692,7 @@ namespace PhotoMosaicMaker.App
                 {
                     FramesPerSecond = fps,
                     MaxFramesPerVideo = maxFrames,
-                    JpegQuality = 3
+                    DHashHammingThreshold = int.TryParse(_imgDplThrValue, out int t) ? t : FrameExtractionDefaults.DHashHammingThreshold
                 };
 
                 var extractor = new FfmpegFrameExtractor("ffmpeg");
@@ -727,8 +770,8 @@ namespace PhotoMosaicMaker.App
 
                 var dedup = ImageDeduplicator.DedupFolderByDHash(
                     SourcesFolder,
-                    hammingThreshold: 6,           // 필요하면 8로 올리면 더 많이 제거
-                    moveToDuplicatesFolder: false,  // 안전: 삭제 대신 _duplicates로 이동
+                    hammingThreshold: frameOpt.DHashHammingThreshold,           
+                    moveToDuplicatesFolder: false,  // 중복된 이미지를 따로 _duplicates로 이동 할지
                     cancellationToken: token);
 
                 StatusText = $"Frames extracted. Dedup moved: {dedup.MovedToDuplicates} / {dedup.Total}. (Build Library 실행)";
@@ -788,7 +831,7 @@ namespace PhotoMosaicMaker.App
 
                 await Task.Run(() =>
                 {
-                    _library = _engine.BuildPatchLibrary(files, settings, progress, token);
+                    _library = _engine.BuildPatchLibrary(files, settings, GridSize, progress, token);
                 }, token);
 
                 StatusText = $"Library ready. Patches: {_library!.Patches.Count}";

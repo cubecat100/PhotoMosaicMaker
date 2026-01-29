@@ -18,6 +18,7 @@ namespace PhotoMosaicMaker.Core.Video
         public bool DeleteDownloadedVideo { get; init; } = true;
 
         // 최대 해상도 설정 (예: 720 = 720p 이하, 0 = 최대 해상도)
-        public int MaxResolution { get; set; } = 720;
+        //타일 크기는 작으므로 360p 정도로도 충분
+        public int MaxResolution { get; set; } = 360;
     }
 }

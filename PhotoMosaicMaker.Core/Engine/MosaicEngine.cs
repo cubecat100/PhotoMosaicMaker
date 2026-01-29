@@ -16,6 +16,7 @@ namespace PhotoMosaicMaker.Core.Engine
         public PatchLibrary BuildPatchLibrary(
             IReadOnlyList<string> sourceImagePaths,
             MosaicSettings settings,
+            int gridSize,
             IProgress<MosaicProgress>? progress,
             CancellationToken cancellationToken)
         {
@@ -24,6 +25,7 @@ namespace PhotoMosaicMaker.Core.Engine
                 sourceImagePaths,
                 settings.TileSize,
                 settings.UseSourcePatches,
+                gridSize,
                 progress,
                 cancellationToken);
         }
@@ -63,8 +65,9 @@ namespace PhotoMosaicMaker.Core.Engine
                     int y = ty * settings.TileSize;
 
                     var tileMean = ImageOps.ComputeMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize);
+                    var tileGrid = ImageOps.ComputeGridMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize, settings.MatchingGridSize);
 
-                    PatchRecord best = FindBestPatch(library.Patches, tileMean, useCount, settings.MaxPatchReuse);
+                    PatchRecord best = FindBestPatch(library.Patches, tileMean, tileGrid, settings.MatchingGridSize, useCount, settings.MaxPatchReuse);
 
                     if (settings.ColorAdjustStrength > 0f)
                     {
@@ -99,6 +102,8 @@ namespace PhotoMosaicMaker.Core.Engine
         private static PatchRecord FindBestPatch(
             IReadOnlyList<PatchRecord> patches,
             in RgbFeature tileMean,
+            float[] tileGrid,
+            int gridSize,
             Dictionary<int, int> useCount,
             int maxReuse)
         {
@@ -116,7 +121,7 @@ namespace PhotoMosaicMaker.Core.Engine
                     continue;
                 }
 
-                float d = p.Mean.DistanceSquared(tileMean);
+                float d = ComputeDistance(p, tileMean, tileGrid, gridSize);
                 if (d < bestDist)
                 {
                     bestDist = d;
@@ -129,7 +134,7 @@ namespace PhotoMosaicMaker.Core.Engine
                 for (int i = 0; i < patches.Count; i++)
                 {
                     var p = patches[i];
-                    float d = p.Mean.DistanceSquared(tileMean);
+                    float d = ComputeDistance(p, tileMean, tileGrid, gridSize);
                     if (d < bestDist)
                     {
                         bestDist = d;
@@ -139,6 +144,19 @@ namespace PhotoMosaicMaker.Core.Engine
             }
 
             return best ?? patches[0];
+        }
+
+        private static float ComputeDistance(in PatchRecord p, in RgbFeature tileMean, float[] tileGrid, int gridSize)
+        {
+            if (gridSize > 1 &&
+                p.GridSize == gridSize &&
+                p.GridFeature.Length == tileGrid.Length &&
+                tileGrid.Length > 0)
+            {
+                return ImageOps.DistanceSquared(p.GridFeature, tileGrid);
+            }
+
+            return p.Mean.DistanceSquared(tileMean);
         }
 
         private static Image<Rgba32> PrepareTargetToOutput(Image<Rgba32> src, int outputWidth, int outputHeight)

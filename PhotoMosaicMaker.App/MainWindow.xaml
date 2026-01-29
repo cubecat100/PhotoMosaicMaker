@@ -56,10 +56,10 @@
             <TextBlock FontSize="16" FontWeight="Bold" Text="Video Sources" Margin="0,0,0,8"/>
 
             <ListBox ItemsSource="{Binding VideoSources}"
-                     SelectedItem="{Binding SelectedVideoSource, Mode=TwoWay}"
-                     DisplayMemberPath="DisplayText"
-                     Height="100"
-                     Margin="0,0,0,8"/>
+                        SelectedItem="{Binding SelectedVideoSource, Mode=TwoWay}"
+                        DisplayMemberPath="DisplayText"
+                        Height="70"
+                        Margin="0,0,0,8"/>
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                 <Button Content="Add Files..." Command="{Binding AddVideoFilesCommand}" Width="110" Margin="0,0,8,0"/>
@@ -67,7 +67,7 @@
                 <Button Content="Clear" Command="{Binding ClearVideoSourcesCommand}" Width="70"/>
             </StackPanel>
 
-            <TextBlock Text="Add URL"/>
+            <TextBlock Text="Add Video URL"/>
             <Grid Margin="0,4,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -76,15 +76,15 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBox Grid.Column="0"
-                         Text="{Binding VideoUrlInputText, UpdateSourceTrigger=PropertyChanged}"/>
+                            Text="{Binding VideoUrlInputText, UpdateSourceTrigger=PropertyChanged}"/>
                 <Button Grid.Column="2"
                         Content="Add"
                         Command="{Binding AddVideoUrlCommand}"/>
             </Grid>
 
-            <Expander Header="Advanced: Downloader (yt-dlp)" IsExpanded="False" Margin="0,0,0,12">
+            <Expander Header="Advanced: Downloader (yt-dlp)" IsExpanded="False" Margin="0,0,0,0" Background="LightGray">
                 <StackPanel>
-                    <TextBlock Text="yt-dlp path (비우면 PATH의 yt-dlp 사용)"/>
+                    <TextBlock Text="yt-dlp path (비우면 PATH의 yt-dlp 사용)" Margin="0,6,0,0"/>
                     <Grid Margin="0,4,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -96,22 +96,21 @@
                         <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseYtDlpCommand}" />
                     </Grid>
 
-                    <CheckBox Content="No playlist"
-                  IsChecked="{Binding YtDlpNoPlaylist, Mode=TwoWay}"
-                  Margin="0,0,0,6"/>
+                    <CheckBox Content="No playlist" IsChecked="{Binding YtDlpNoPlaylist, Mode=TwoWay}" Margin="0,0,0,8"/>
 
                     <TextBlock Text="Max resolution (0 = unlimited)"/>
-                    <TextBox Text="{Binding YtDlpMaxResolutionText, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,4,0,0"/>
+                    <TextBox Text="{Binding YtDlpMaxResolutionText, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,6"/>
                 </StackPanel>
             </Expander>
+            <Separator Margin="0, 6"/>
 
             <Grid Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="180"/>
+                    <ColumnDefinition Width="360"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -120,7 +119,10 @@
                 <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ExtractFpsText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6"/>
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Max frames per source (0=∞)"/>
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ExtractMaxFramesText, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ExtractMaxFramesText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Image duplicate threshold (0~32, 0 is no detected)"/>
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ImgDplThrValue}"/>
             </Grid>
 
             <Button Content="Extract Frames to Sources" Height="32" Command="{Binding ExtractFramesCommand}" />
@@ -130,7 +132,9 @@
             <!-- Mosaic settings -->
             <Grid Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="100"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
@@ -140,7 +144,8 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Column="0" Grid.Row="0" Text="output size" Margin="0,0,0,6"/>
-                <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal">
+                
+                <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Grid.ColumnSpan="3">
                     <RadioButton Content="HD (720p) " GroupName="OutputResolution" IsChecked="{Binding IsOutputHd, Mode=TwoWay}" />
                     <RadioButton Content="FHD (1080p) " GroupName="OutputResolution" IsChecked="{Binding IsOutputFhd, Mode=TwoWay}" />
                     <RadioButton Content="QHD (1440p) " GroupName="OutputResolution" IsChecked="{Binding IsOutputQhd, Mode=TwoWay}" />
@@ -150,9 +155,9 @@
                 <TextBlock Grid.Column="0" Grid.Row="1" Text="Tile Size"/>
                 <TextBox Grid.Column="1" Grid.Row="1" Text="{Binding TileSizeText, UpdateSourceTrigger=PropertyChanged}"/>
             </Grid>
-            <CheckBox Content="소스 이미지를 잘라 사용 (성능이 저하될수 있음)"
-                      IsChecked="{Binding UseSourcePatches, Mode=TwoWay}"
-                      Margin="0,0,0,12"/>
+            <CheckBox Content="Cropped source image (Output maybe slow)"
+                        IsChecked="{Binding UseSourcePatches, Mode=TwoWay}"
+                        Margin="0,0,0,12"/>
 
             <TextBlock Text="Status"/>
             <TextBlock Text="{Binding StatusText}" Margin="0,4,0,12" TextWrapping="Wrap"/>
