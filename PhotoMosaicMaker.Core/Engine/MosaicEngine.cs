@@ -5,6 +5,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -30,8 +31,21 @@ namespace PhotoMosaicMaker.Core.Engine
                 cancellationToken);
         }
 
+        // 이미지 파일 입력용 오버로드
         public Image<Rgba32> Render(
             string targetImagePath,
+            PatchLibrary library,
+            MosaicSettings settings,
+            IProgress<MosaicProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            using Image<Rgba32> targetOriginal = Image.Load<Rgba32>(targetImagePath);
+            return Render(targetOriginal, library, settings, progress, cancellationToken);
+        }
+
+        // 비디오 프레임(메모리) 입력용 오버로드
+        public Image<Rgba32> Render(
+            Image<Rgba32> targetFrame,
             PatchLibrary library,
             MosaicSettings settings,
             IProgress<MosaicProgress>? progress,
@@ -42,61 +56,80 @@ namespace PhotoMosaicMaker.Core.Engine
                 throw new InvalidOperationException("패치 라이브러리가 비어 있습니다.");
             }
 
-            using Image<Rgba32> targetOriginal = Image.Load<Rgba32>(targetImagePath);
-            using Image<Rgba32> target = PrepareTargetToOutput(targetOriginal, settings.OutputWidth, settings.OutputHeight);
+            Image<Rgba32>? prepared = null;
 
-            int gridW = settings.OutputWidth / settings.TileSize;
-            int gridH = settings.OutputHeight / settings.TileSize;
-
-            var result = new Image<Rgba32>(settings.OutputWidth, settings.OutputHeight);
-
-            var useCount = new Dictionary<int, int>();
-            progress?.Report(new MosaicProgress(MosaicStage.Rendering, 0, gridW * gridH));
-
-            int done = 0;
-
-            for (int ty = 0; ty < gridH; ty++)
+            // 성능 포인트:
+            // - ffmpeg에서 이미 settings.OutputWidth/Height로 스케일해서 넘기면 여기서 Resize/Clone을 피할 수 있음
+            Image<Rgba32> target;
+            if (targetFrame.Width != settings.OutputWidth || targetFrame.Height != settings.OutputHeight)
             {
-                for (int tx = 0; tx < gridW; tx++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    int x = tx * settings.TileSize;
-                    int y = ty * settings.TileSize;
-
-                    var tileMean = ImageOps.ComputeMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize);
-                    var tileGrid = ImageOps.ComputeGridMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize, settings.MatchingGridSize);
-
-                    PatchRecord best = FindBestPatch(library.Patches, tileMean, tileGrid, settings.MatchingGridSize, useCount, settings.MaxPatchReuse);
-
-                    if (settings.ColorAdjustStrength > 0f)
-                    {
-                        float dr = (tileMean.R - best.Mean.R) * settings.ColorAdjustStrength;
-                        float dg = (tileMean.G - best.Mean.G) * settings.ColorAdjustStrength;
-                        float db = (tileMean.B - best.Mean.B) * settings.ColorAdjustStrength;
-
-                        ImageOps.BlitWithColorOffset(result, best.Image, x, y, dr, dg, db);
-                    }
-                    else
-                    {
-                        ImageOps.Blit(result, best.Image, x, y);
-                    }
-
-                    if (useCount.TryGetValue(best.Id, out int used) == true)
-                    {
-                        useCount[best.Id] = used + 1;
-                    }
-                    else
-                    {
-                        useCount[best.Id] = 1;
-                    }
-
-                    done++;
-                    progress?.Report(new MosaicProgress(MosaicStage.Rendering, done, gridW * gridH));
-                }
+                prepared = PrepareTargetToOutput(targetFrame, settings.OutputWidth, settings.OutputHeight);
+                target = prepared;
+            }
+            else
+            {
+                target = targetFrame;
             }
 
-            return result;
+            try
+            {
+                int gridW = settings.OutputWidth / settings.TileSize;
+                int gridH = settings.OutputHeight / settings.TileSize;
+
+                var result = new Image<Rgba32>(settings.OutputWidth, settings.OutputHeight);
+
+                var useCount = new Dictionary<int, int>();
+                progress?.Report(new MosaicProgress(MosaicStage.Rendering, 0, gridW * gridH));
+
+                int done = 0;
+
+                for (int ty = 0; ty < gridH; ty++)
+                {
+                    for (int tx = 0; tx < gridW; tx++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        int x = tx * settings.TileSize;
+                        int y = ty * settings.TileSize;
+
+                        var tileMean = ImageOps.ComputeMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize);
+                        var tileGrid = ImageOps.ComputeGridMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize, settings.MatchingGridSize);
+
+                        PatchRecord best = FindBestPatch(library.Patches, tileMean, tileGrid, settings.MatchingGridSize, useCount, settings.MaxPatchReuse);
+
+                        if (settings.ColorAdjustStrength > 0f)
+                        {
+                            float dr = (tileMean.R - best.Mean.R) * settings.ColorAdjustStrength;
+                            float dg = (tileMean.G - best.Mean.G) * settings.ColorAdjustStrength;
+                            float db = (tileMean.B - best.Mean.B) * settings.ColorAdjustStrength;
+
+                            ImageOps.BlitWithColorOffset(result, best.Image, x, y, dr, dg, db);
+                        }
+                        else
+                        {
+                            ImageOps.Blit(result, best.Image, x, y);
+                        }
+
+                        if (useCount.TryGetValue(best.Id, out int used) == true)
+                        {
+                            useCount[best.Id] = used + 1;
+                        }
+                        else
+                        {
+                            useCount[best.Id] = 1;
+                        }
+
+                        done++;
+                        progress?.Report(new MosaicProgress(MosaicStage.Rendering, done, gridW * gridH));
+                    }
+                }
+
+                return result;
+            }
+            finally
+            {
+                prepared?.Dispose();
+            }
         }
 
         private static PatchRecord FindBestPatch(

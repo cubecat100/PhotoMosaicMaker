@@ -19,8 +19,9 @@ namespace PhotoMosaicMaker.Core.Models
         // 0=off ~ 1=strong
         public float ColorAdjustStrength { get; init; } = 0.35f;
 
+        //이미지를 잘라서 사용
         public bool UseSourcePatches { get; init; } = false;
 
-        public int MatchingGridSize { get; init; } = 3; // 2면 2x2(권장 시작점)
+        public int MatchingGridSize { get; init; } = 2; // 2면 2x2(권장 시작점)
     }
 }
