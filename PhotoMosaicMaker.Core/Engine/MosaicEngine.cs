@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace PhotoMosaicMaker.Core.Engine
@@ -22,9 +23,15 @@ namespace PhotoMosaicMaker.Core.Engine
             CancellationToken cancellationToken)
         {
             var builder = new PatchLibraryBuilder();
+
+            // TileSize는 가로(width)로 해석. 세로는 16:9 비율로 계산
+            int tileWidth = settings.TileSize;
+            int tileHeight = Math.Max(1, tileWidth * 9 / 16);
+
             return builder.BuildFromImageFiles(
                 sourceImagePaths,
-                settings.TileSize,
+                tileWidth,
+                tileHeight,
                 settings.UseSourcePatches,
                 gridSize,
                 progress,
@@ -58,6 +65,10 @@ namespace PhotoMosaicMaker.Core.Engine
 
             Image<Rgba32>? prepared = null;
 
+            // TileSize는 가로(폭). 세로는 16:9 비율로 계산
+            int tileWidth = settings.TileSize;
+            int tileHeight = Math.Max(1, tileWidth * 9 / 16);
+
             // 성능 포인트:
             // - ffmpeg에서 이미 settings.OutputWidth/Height로 스케일해서 넘기면 여기서 Resize/Clone을 피할 수 있음
             Image<Rgba32> target;
@@ -73,8 +84,9 @@ namespace PhotoMosaicMaker.Core.Engine
 
             try
             {
-                int gridW = settings.OutputWidth / settings.TileSize;
-                int gridH = settings.OutputHeight / settings.TileSize;
+                // 남는 여백이 있어도 마지막 타일을 잘라서 채우도록 ceil 방식으로 계산
+                int gridW = (settings.OutputWidth + tileWidth - 1) / tileWidth;
+                int gridH = (settings.OutputHeight + tileHeight - 1) / tileHeight;
 
                 var result = new Image<Rgba32>(settings.OutputWidth, settings.OutputHeight);
 
@@ -89,11 +101,23 @@ namespace PhotoMosaicMaker.Core.Engine
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        int x = tx * settings.TileSize;
-                        int y = ty * settings.TileSize;
+                        int x = tx * tileWidth;
+                        int y = ty * tileHeight;
 
-                        var tileMean = ImageOps.ComputeMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize);
-                        var tileGrid = ImageOps.ComputeGridMeanRgbRegion(target, x, y, settings.TileSize, settings.TileSize, settings.MatchingGridSize);
+                        // 남은 영역 크기에 맞춰 실제 타일 크기 결정 (마지막 행/열은 작을 수 있음)
+                        int actualW = Math.Min(tileWidth, settings.OutputWidth - x);
+                        int actualH = Math.Min(tileHeight, settings.OutputHeight - y);
+
+                        if (actualW <= 0 || actualH <= 0)
+                        {
+                            // 패딩 없이 넘어감
+                            done++;
+                            progress?.Report(new MosaicProgress(MosaicStage.Rendering, done, gridW * gridH));
+                            continue;
+                        }
+
+                        var tileMean = ImageOps.ComputeMeanRgbRegion(target, x, y, actualW, actualH);
+                        var tileGrid = ImageOps.ComputeGridMeanRgbRegion(target, x, y, actualW, actualH, settings.MatchingGridSize);
 
                         PatchRecord best = FindBestPatch(library.Patches, tileMean, tileGrid, settings.MatchingGridSize, useCount, settings.MaxPatchReuse);
 
@@ -103,11 +127,11 @@ namespace PhotoMosaicMaker.Core.Engine
                             float dg = (tileMean.G - best.Mean.G) * settings.ColorAdjustStrength;
                             float db = (tileMean.B - best.Mean.B) * settings.ColorAdjustStrength;
 
-                            ImageOps.BlitWithColorOffset(result, best.Image, x, y, dr, dg, db);
+                            ImageOps.BlitWithColorOffset(result, best.Image, x, y, actualW, actualH, dr, dg, db);
                         }
                         else
                         {
-                            ImageOps.Blit(result, best.Image, x, y);
+                            ImageOps.Blit(result, best.Image, x, y, actualW, actualH);
                         }
 
                         if (useCount.TryGetValue(best.Id, out int used) == true)

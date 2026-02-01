@@ -23,12 +23,18 @@ namespace PhotoMosaicMaker.Core.Imaging
             return src.Clone(ctx => ctx.Resize(width, height));
         }
 
-        // 원본 1장을 "타일 1장"으로: 비율 유지 + cover(중앙) 크롭
+        // 원본 1장을 "타일 1장"으로: 비율 유지 + cover(중앙) 크롭 (정사각형 기존 오버로드 유지)
         public static Image<Rgba32> CreateTileCoverCrop(Image<Rgba32> src, int tileSize)
+        {
+            return CreateTileCoverCrop(src, tileSize, tileSize);
+        }
+
+        // 가로/세로 다르게 지정하는 오버로드 (16:9 등 비율 적용 시 사용)
+        public static Image<Rgba32> CreateTileCoverCrop(Image<Rgba32> src, int tileWidth, int tileHeight)
         {
             return src.Clone(ctx => ctx.Resize(new ResizeOptions
             {
-                Size = new Size(tileSize, tileSize),
+                Size = new Size(tileWidth, tileHeight),
                 Mode = ResizeMode.Crop,
                 Position = AnchorPositionMode.Center
             }));
@@ -83,6 +89,28 @@ namespace PhotoMosaicMaker.Core.Imaging
             });
         }
 
+        // 크기를 맞춰서 복사하는 오버로드
+        public static void Blit(Image<Rgba32> dest, Image<Rgba32> patch, int destX, int destY, int destW, int destH)
+        {
+            if (destW == patch.Width && destH == patch.Height)
+            {
+                Blit(dest, patch, destX, destY);
+                return;
+            }
+
+            using Image<Rgba32> resized = patch.Clone(ctx => ctx.Resize(destW, destH));
+            dest.ProcessPixelRows(destAcc =>
+            {
+                for (int y = 0; y < resized.Height; y++)
+                {
+                    Span<Rgba32> dstRow = destAcc.GetRowSpan(destY + y).Slice(destX, resized.Width);
+                    Span<Rgba32> srcRow = resized.DangerousGetPixelRowMemory(y).Span.Slice(0, resized.Width);
+
+                    srcRow.CopyTo(dstRow);
+                }
+            });
+        }
+
         public static void BlitWithColorOffset(
             Image<Rgba32> dest,
             Image<Rgba32> patch,
@@ -102,6 +130,54 @@ namespace PhotoMosaicMaker.Core.Imaging
                 {
                     Span<Rgba32> dstRow = destAcc.GetRowSpan(destY + y).Slice(destX, patch.Width);
                     Span<Rgba32> srcRow = patch.DangerousGetPixelRowMemory(y).Span.Slice(0, patch.Width);
+
+                    for (int x = 0; x < srcRow.Length; x++)
+                    {
+                        var s = srcRow[x];
+
+                        int rr = s.R + rOff;
+                        int gg = s.G + gOff;
+                        int bb = s.B + bOff;
+
+                        dstRow[x] = new Rgba32(
+                            (byte)Clamp255(rr),
+                            (byte)Clamp255(gg),
+                            (byte)Clamp255(bb),
+                            s.A);
+                    }
+                }
+            });
+        }
+
+        // 크기를 맞춰서 색상 보정하며 복사하는 오버로드
+        public static void BlitWithColorOffset(
+            Image<Rgba32> dest,
+            Image<Rgba32> patch,
+            int destX,
+            int destY,
+            int destW,
+            int destH,
+            float dr,
+            float dg,
+            float db)
+        {
+            if (destW == patch.Width && destH == patch.Height)
+            {
+                BlitWithColorOffset(dest, patch, destX, destY, dr, dg, db);
+                return;
+            }
+
+            using Image<Rgba32> resized = patch.Clone(ctx => ctx.Resize(destW, destH));
+            int rOff = (int)(dr * 255f);
+            int gOff = (int)(dg * 255f);
+            int bOff = (int)(db * 255f);
+
+            dest.ProcessPixelRows(destAcc =>
+            {
+                for (int y = 0; y < resized.Height; y++)
+                {
+                    Span<Rgba32> dstRow = destAcc.GetRowSpan(destY + y).Slice(destX, resized.Width);
+                    Span<Rgba32> srcRow = resized.DangerousGetPixelRowMemory(y).Span.Slice(0, resized.Width);
 
                     for (int x = 0; x < srcRow.Length; x++)
                     {
