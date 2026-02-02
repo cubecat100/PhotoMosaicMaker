@@ -1086,7 +1086,7 @@ namespace PhotoMosaicMaker.App
                 OutputWidth = outW,
                 OutputHeight = outH,
                 TileSize = tileSize,
-                MaxPatchReuse = 5,
+                MaxPatchReuse = MosaicDefaults.MaxPatchReuse,
                 ColorAdjustStrength = 0.35f,
                 UseSourcePatches = UseSourcePatches
             };

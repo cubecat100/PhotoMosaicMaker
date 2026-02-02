@@ -12,7 +12,13 @@ using System.Threading.Tasks;
 
 namespace PhotoMosaicMaker.Core.Video
 {
-    public sealed record VideoRenderProgress(string Stage, int CurrentFrame, int TotalFrames, double? InnerProgress);
+    public sealed record VideoRenderProgress(
+        string Stage,
+        int CurrentFrame,
+        int TotalFrames,
+        double? InnerProgress,
+        TimeSpan Elapsed,
+        TimeSpan? EstimatedRemaining);
 
     public sealed class VideoMosaicRenderer
     {
@@ -35,7 +41,8 @@ namespace PhotoMosaicMaker.Core.Video
             IProgress<MosaicProgress>? frameProgress,
             CancellationToken cancellationToken)
         {
-            progress?.Report(new VideoRenderProgress("Probing", 0, 0, null));
+            var sw = Stopwatch.StartNew();
+            progress?.Report(new VideoRenderProgress("Probing", 0, 0, null, sw.Elapsed, null));
 
             VideoInfo info = await VideoInfoReader.ReadAsync(ffprobePath, inputMp4Path, cancellationToken);
 
@@ -61,11 +68,28 @@ namespace PhotoMosaicMaker.Core.Video
 
             int frameIndex = 0;
 
+            // 지역 헬퍼: ETA 계산 및 보고
+            void Report(string stage, int currentFrame, double? innerProgress)
+            {
+                double processed = frameIndex + (innerProgress ?? 0.0); // frameIndex는 이미 처리한 프레임 수
+                TimeSpan? eta = null;
+                if (processed > 0 && totalFrames > processed)
+                {
+                    double avgSecPerFrame = sw.Elapsed.TotalSeconds / processed;
+                    double remainingFrames = Math.Max(0.0, totalFrames - processed);
+                    eta = TimeSpan.FromSeconds(avgSecPerFrame * remainingFrames);
+                }
+
+                progress?.Report(new VideoRenderProgress(stage, currentFrame, totalFrames, innerProgress, sw.Elapsed, eta));
+            }
+
+            Report("Probing", 0, null);
+
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                progress?.Report(new VideoRenderProgress("Decoding", frameIndex, totalFrames, null));
+                Report("Decoding", frameIndex, null);
 
                 bool ok = await decoder.ReadFrameAsync(raw, cancellationToken);
                 if (ok == false)
@@ -90,30 +114,30 @@ namespace PhotoMosaicMaker.Core.Video
                     if (p.Total > 0)
                     {
                         inner = (double)p.Current / p.Total;
-                        progress?.Report(new VideoRenderProgress("Rendering", frameIndex + 1, totalFrames, inner));
+                        progress?.Report(new VideoRenderProgress("Rendering", frameIndex + 1, totalFrames, inner, sw.Elapsed, null));
                     }
                     else
                     {
-                        progress?.Report(new VideoRenderProgress("Rendering", frameIndex + 1, totalFrames, null));
+                        progress?.Report(new VideoRenderProgress("Rendering", frameIndex + 1, totalFrames, null, sw.Elapsed, null));
                     }
                 });
 
-                progress?.Report(new VideoRenderProgress("Rendering", frameIndex + 1, totalFrames, null));
+                Report("Rendering", frameIndex + 1, null);
 
                 using Image<Rgba32> mosaic = _engine.Render(inputFrame, library, settings, wrappedFrameProgress, cancellationToken);
 
-                progress?.Report(new VideoRenderProgress("Encoding", frameIndex + 1, totalFrames, inner));
+                Report("Encoding", frameIndex + 1, inner);
                 await encoder.WriteFrameAsync(mosaic, cancellationToken);
 
                 frameIndex++;
-                progress?.Report(new VideoRenderProgress("Encoding", frameIndex, totalFrames, null));
+                Report("Encoding", frameIndex, null);
             }
 
-            progress?.Report(new VideoRenderProgress("Finishing", frameIndex, totalFrames, null));
+            Report("Finishing", frameIndex, null);
             await encoder.FinishAsync(cancellationToken);
 
             // 오디오 mux (기본 ON: "알아서" → 있으면 포함, 없으면 스킵)
-            progress?.Report(new VideoRenderProgress("MuxingAudio", frameIndex, totalFrames, null));
+            Report("MuxingAudio", frameIndex, null);
             await MuxAudioIfAnyAsync(ffmpegPath, tempVideoOnlyPath, inputMp4Path, outputMp4Path, cancellationToken);
 
             // 정리
@@ -129,7 +153,7 @@ namespace PhotoMosaicMaker.Core.Video
                 // ignore
             }
 
-            progress?.Report(new VideoRenderProgress("Done", frameIndex, totalFrames, 1));
+            Report("Done", frameIndex, 1);
         }
 
         static void CopyRawToImageRgba(byte[] raw, Image<Rgba32> img, int frameBytes)
