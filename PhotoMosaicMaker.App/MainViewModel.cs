@@ -69,6 +69,8 @@ namespace PhotoMosaicMaker.App
 
         private VideoSourceItem? _selectedVideoSource;
 
+        private double _outputBlur = MosaicDefaults.OutputBlurRadius;
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
         #endregion
@@ -170,7 +172,8 @@ namespace PhotoMosaicMaker.App
                 _library?.Dispose();
                 _library = null;
 
-                StatusText = "옵션 변경됨: Build Library를 다시 실행하세요.";
+                StatusText = "옵션 변경됨";
+
                 RaiseCanExecuteAll();
             }
         }
@@ -299,7 +302,7 @@ namespace PhotoMosaicMaker.App
                 OnPropertyChanged();
                 _library?.Dispose();
                 _library = null;
-                StatusText = "옵션 변경됨: Build Library를 다시 실행하세요.";
+                StatusText = "옵션 변경됨";
                 RaiseCanExecuteAll();
             }
         }
@@ -418,6 +421,19 @@ namespace PhotoMosaicMaker.App
                 }
 
                 OnPropertyChanged();
+            }
+        }
+
+        // 출력 블러 반경 (UI 슬라이더에 바인딩)
+        public double OutputBlur
+        {
+            get => _outputBlur;
+            set
+            {
+                if (Math.Abs(_outputBlur - value) < 0.0001) return;
+                _outputBlur = value;
+                OnPropertyChanged();
+                // 블러는 라이브러리에 영향을 주지 않으므로 _library는 유지
             }
         }
 
@@ -1118,7 +1134,8 @@ namespace PhotoMosaicMaker.App
                 TileSize = tileSize,
                 MaxPatchReuse = MosaicDefaults.MaxPatchReuse,
                 ColorAdjustStrength = 0.35f,
-                UseSourcePatches = UseSourcePatches
+                UseSourcePatches = UseSourcePatches,
+                OutputBlurRadius = (float)OutputBlur
             };
         }
 

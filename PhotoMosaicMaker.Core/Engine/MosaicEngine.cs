@@ -148,6 +148,12 @@ namespace PhotoMosaicMaker.Core.Engine
                     }
                 }
 
+                // 출력 블러 적용 (0 = 비활성)
+                if (settings.OutputBlurRadius > 0f)
+                {
+                    result.Mutate(ctx => ctx.GaussianBlur(settings.OutputBlurRadius));
+                }
+
                 return result;
             }
             finally

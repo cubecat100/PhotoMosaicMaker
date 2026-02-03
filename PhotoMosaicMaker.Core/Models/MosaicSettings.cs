@@ -19,9 +19,13 @@ namespace PhotoMosaicMaker.Core.Models
         // 0=off ~ 1=strong
         public float ColorAdjustStrength { get; init; } = 0.35f;
 
-        //
+        //이미지를 잘라서 사용할지 여부
         public bool UseSourcePatches { get; init; } = false;
 
-        public int MatchingGridSize { get; init; } = 2; // 2면 2x2(권장 시작점)
+        // 매칭 시 그리드 크기, 2면 2x2(
+        public int MatchingGridSize { get; init; } = 2;
+
+        // 출력 이미지에 적용할 가우시안 블러 반경 (0 = off)
+        public float OutputBlurRadius { get; init; } = 0f;
     }
 }
