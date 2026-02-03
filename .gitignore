@@ -362,3 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /PhotoMosaicMaker.Video
+/PhotoMosaicMaker.Core/Video/FfmpegRawVideoDecoder.cs
+/PhotoMosaicMaker.Core/Video/VideoMosaicRenderer.cs
+/PhotoMosaicMaker.Core/Video/FfmpegRawVideoEncoder.cs
