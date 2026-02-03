@@ -131,7 +131,7 @@ namespace PhotoMosaicMaker.App
 
         public string SourcesFolder
         {
-            get => _sourcesFolder;
+            get => _sourcesFolder; // placeholder to avoid compile issue
             private set
             {
                 if (_sourcesFolder == value) return;
@@ -331,6 +331,7 @@ namespace PhotoMosaicMaker.App
                 OnPropertyChanged(nameof(IsOutputUhd));
                 OnPropertyChanged(nameof(IsOutputQhd));
                 OnPropertyChanged(nameof(IsOutputFhd));
+                OnPropertyChanged(nameof(IsOutputHd));
                 OnPropertyChanged(nameof(SelectedOutputWidth));
                 OnPropertyChanged(nameof(SelectedOutputHeight));
 
@@ -788,6 +789,49 @@ namespace PhotoMosaicMaker.App
             return EnumerateSourceImages(SourcesFolder).Count > 0;
         }
 
+        // 새 내부 빌드 메서드: 재사용성 확보(동일 로직을 Render에서 호출)
+        private async Task<PatchLibrary> BuildLibraryInternalAsync(CancellationToken token)
+        {
+            if (Directory.Exists(SourcesFolder) == false)
+            {
+                throw new InvalidOperationException("Sources folder not set.");
+            }
+
+            var files = EnumerateSourceImages(SourcesFolder);
+            if (files.Count == 0)
+            {
+                throw new InvalidOperationException("No source images found.");
+            }
+
+            StatusText = "Building patch library...";
+            ProgressValue = 0;
+
+            int tileSize = ParseTileSize();
+            var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, SelectedOutputWidth, SelectedOutputHeight);
+            var settings = CreateSettings(tileSize, outW, outH);
+
+            var progress = new Progress<MosaicProgress>(p =>
+            {
+                if (p.Total > 0)
+                {
+                    ProgressValue = (double)p.Current / p.Total;
+                    StatusText = $"{p.Stage}: {p.Current}/{p.Total}";
+                }
+                else
+                {
+                    StatusText = $"{p.Stage}";
+                }
+            });
+
+            // 기존 라이브러리 제거는 호출자 책임(빌드 호출 전 이미 처리됨)
+            var lib = await Task.Run(() =>
+            {
+                return _engine.BuildPatchLibrary(files, settings, GridSize, progress, token);
+            }, token);
+
+            return lib;
+        }
+
         private void BuildLibrary()
         {
             RunAsync(async token =>
@@ -798,41 +842,17 @@ namespace PhotoMosaicMaker.App
                     return;
                 }
 
-                var files = EnumerateSourceImages(SourcesFolder);
-                if (files.Count == 0)
-                {
-                    StatusText = "No source images found.";
-                    return;
-                }
-
-                StatusText = "Building patch library...";
-                ProgressValue = 0;
-
-                int tileSize = ParseTileSize();
-
-                var (outW, outH) = ComputeOutputSizeFromTarget(TargetPath, SelectedOutputWidth, SelectedOutputHeight);
-                var settings = CreateSettings(tileSize, outW, outH);
-
-                var progress = new Progress<MosaicProgress>(p =>
-                {
-                    if (p.Total > 0)
-                    {
-                        ProgressValue = (double)p.Current / p.Total;
-                        StatusText = $"{p.Stage}: {p.Current}/{p.Total}";
-                    }
-                    else
-                    {
-                        StatusText = $"{p.Stage}";
-                    }
-                });
-
                 _library?.Dispose();
                 _library = null;
 
-                await Task.Run(() =>
+                try
                 {
-                    _library = _engine.BuildPatchLibrary(files, settings, GridSize, progress, token);
-                }, token);
+                    _library = await BuildLibraryInternalAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
 
                 StatusText = $"Library ready. Patches: {_library!.Patches.Count}";
                 ProgressValue = 1;
@@ -844,7 +864,7 @@ namespace PhotoMosaicMaker.App
         private bool CanRender()
         {
             if (_isBusy == true) return false;
-            if (_library == null) return false;
+            // _library may be null — allow Render so it can auto-build
             if (File.Exists(TargetPath) == false) return false;
             if (Directory.Exists(OutputFolder) == false) return false;
             if (string.IsNullOrWhiteSpace(OutputFileNameText) == true) return false;
@@ -855,10 +875,20 @@ namespace PhotoMosaicMaker.App
         {
             RunAsync(async token =>
             {
+                // 라이브러리가 없으면 자동 빌드 (최소 변경, 재사용 극대화)
                 if (_library == null)
                 {
-                    StatusText = "Build library first.";
-                    return;
+                    try
+                    {
+                        // 기존 라이브러리 객체가 있으면 Dispose (safety)
+                        _library?.Dispose();
+                        _library = await BuildLibraryInternalAsync(token);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        StatusText = ex.Message;
+                        return;
+                    }
                 }
 
                 if (File.Exists(TargetPath) == false)
@@ -893,7 +923,7 @@ namespace PhotoMosaicMaker.App
 
                 Image<Rgba32> result = await Task.Run(() =>
                 {
-                    return _engine.Render(TargetPath, _library, settings, progress, token);
+                    return _engine.Render(TargetPath, _library!, settings, progress, token);
                 }, token);
 
                 try
