@@ -95,6 +95,7 @@ namespace PhotoMosaicMaker.App
             BuildLibraryCommand = new RelayCommand(BuildLibrary, CanBuildLibrary);
             RenderCommand = new RelayCommand(Render, CanRender);
             CancelCommand = new RelayCommand(Cancel, () => _isBusy == true);
+            CopyStatusCommand = new RelayCommand(CopyStatus, () => string.IsNullOrEmpty(StatusText) == false);
 
             // 기본 출력 폴더 설정 + sources 자동 생성
             SetOutputFolderInternal(GetDefaultOutputFolder());
@@ -245,7 +246,12 @@ namespace PhotoMosaicMaker.App
         public string StatusText
         {
             get => _statusText;
-            private set { _statusText = value; OnPropertyChanged(); }
+            private set
+            {
+                _statusText = value;
+                OnPropertyChanged();
+                CopyStatusCommand.RaiseCanExecuteChanged();
+            }
         }
 
         public double ProgressValue
@@ -457,6 +463,12 @@ namespace PhotoMosaicMaker.App
         public RelayCommand BuildLibraryCommand { get; }
         public RelayCommand RenderCommand { get; }
         public RelayCommand CancelCommand { get; }
+        public RelayCommand CopyStatusCommand { get; }
+
+        private void CopyStatus()
+        {
+            System.Windows.Clipboard.SetText(StatusText);
+        }
 
         #endregion
 
@@ -791,7 +803,16 @@ namespace PhotoMosaicMaker.App
                     moveToDuplicatesFolder: false,  // 중복된 이미지를 따로 _duplicates로 이동 할지
                     cancellationToken: token);
 
-                StatusText = $"Frames extracted. Dedup moved: {dedup.MovedToDuplicates} / {dedup.Total}. (Build Library 실행)";
+                StatusText = "Deduplicating against all source frames...";
+
+                var globalDedup = ImageDeduplicator.DedupFolderByDHashAgainstAll(
+                    SourcesFolder,
+                    hammingThreshold: frameOpt.DHashHammingThreshold,
+                    moveToDuplicatesFolder: false,
+                    cancellationToken: token);
+
+                StatusText = $"Frames extracted. Adjacent removed: {dedup.MovedToDuplicates}, " +
+                    $"global removed: {globalDedup.MovedToDuplicates}. (Build Library 실행)";
                 ProgressValue = 1;
 
                 RaiseCanExecuteAll();

@@ -112,6 +112,82 @@ namespace PhotoMosaicMaker.Core.Imaging
             };
         }
 
+        public static DedupResult DedupFolderByDHashAgainstAll(
+            string folder,
+            int hammingThreshold,
+            bool moveToDuplicatesFolder,
+            CancellationToken cancellationToken)
+        {
+            if (Directory.Exists(folder) == false)
+            {
+                return new DedupResult { Total = 0, Kept = 0, MovedToDuplicates = 0 };
+            }
+
+            string duplicatesFolder = Path.Combine(folder, "_duplicates");
+            if (moveToDuplicatesFolder == true)
+            {
+                Directory.CreateDirectory(duplicatesFolder);
+            }
+
+            var files = Directory.EnumerateFiles(folder)
+                .Where(IsImageFile)
+                .Select(p => new FileInfo(p))
+                .OrderBy(fi => fi.CreationTimeUtc)
+                .ThenBy(fi => fi.Name)
+                .ToList();
+
+            var keptHashes = new List<ulong>();
+            int kept = 0;
+            int moved = 0;
+
+            foreach (var fi in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                ulong hash;
+                try
+                {
+                    hash = ComputeDHash64(fi.FullName);
+                }
+                catch
+                {
+                    // 읽기 실패 파일은 유지하되 다른 이미지의 비교 기준에서는 제외
+                    kept++;
+                    continue;
+                }
+
+                bool isDuplicate = keptHashes.Any(keptHash =>
+                    HammingDistance(keptHash, hash) <= hammingThreshold);
+
+                if (isDuplicate == true)
+                {
+                    if (moveToDuplicatesFolder == true)
+                    {
+                        string dst = Path.Combine(duplicatesFolder, fi.Name);
+                        dst = MakeUniquePath(dst);
+                        File.Move(fi.FullName, dst);
+                    }
+                    else
+                    {
+                        File.Delete(fi.FullName);
+                    }
+
+                    moved++;
+                    continue;
+                }
+
+                kept++;
+                keptHashes.Add(hash);
+            }
+
+            return new DedupResult
+            {
+                Total = files.Count,
+                Kept = kept,
+                MovedToDuplicates = moved
+            };
+        }
+
         private static bool IsImageFile(string path)
         {
             return path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)

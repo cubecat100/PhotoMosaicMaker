@@ -13,7 +13,10 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Column="0" Orientation="Vertical">
+        <ScrollViewer Grid.Column="0"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Vertical">
 
             <TextBlock FontSize="16" FontWeight="Bold" Text="Inputs" Margin="0,0,0,8"/>
 
@@ -176,7 +179,13 @@
                         IsChecked="{Binding UseSourcePatches, Mode=TwoWay}"
                         Margin="0,0,0,12"/>
 
-            <TextBlock Text="Status"/>
+            <Grid>
+                <TextBlock Text="Status" VerticalAlignment="Center"/>
+                <Button Content="Copy"
+                        Command="{Binding CopyStatusCommand}"
+                        HorizontalAlignment="Right"
+                        Padding="12,2"/>
+            </Grid>
             <TextBlock Text="{Binding StatusText}" Margin="0,4,0,12" TextWrapping="Wrap"/>
 
             <ProgressBar Height="18" Minimum="0" Maximum="1" Value="{Binding ProgressValue, Mode=OneWay}" Margin="0,0,0,12"/>
@@ -186,6 +195,7 @@
                 <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80"/>
             </StackPanel>
         </StackPanel>
+        </ScrollViewer>
 
         <!-- Preview -->
         <Border Grid.Column="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8">
